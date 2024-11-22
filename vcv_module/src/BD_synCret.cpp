@@ -17,7 +17,7 @@ struct BD_synCret : Module {
 		PARAMS_LEN
 	};
 	enum InputId {
-		PITCH_INPUT,
+		PITCH_INPUT, // TODO: TURN POLYPHONIC?
 		I1_INPUT,
 		I2_INPUT,
 		I3_INPUT,
@@ -49,7 +49,7 @@ struct BD_synCret : Module {
 		configParam(P4_PARAM, 0.f, 1.f, 0.f, "");
 		configParam(P5_PARAM, 0.f, 1.f, 0.f, "");
 		configParam(P6_PARAM, 0.f, 1.f, 0.f, "");
-		configInput(PITCH_INPUT, "");
+		configInput(PITCH_INPUT, ""); // TODO: POLYPHONIC?
 		configInput(I1_INPUT, "");
 		configInput(I2_INPUT, "");
 		configInput(I3_INPUT, "");
@@ -76,8 +76,9 @@ struct BD_synCret : Module {
 
 	void process(const ProcessArgs& args) override {
 		
-		// exit early if the plugin has not been set
-		if(plugin == nullptr){
+		// exit early if the plugin has not been set or if the output is not connected
+		if(plugin == nullptr || \
+		   		!(outputs[OUT_L_OUTPUT].isConnected() or outputs[OUT_R_OUTPUT].isConnected())) {
 			outputs[OUT_L_OUTPUT].setVoltage(0.0f);
 			outputs[OUT_R_OUTPUT].setVoltage(0.0f);
 			return;
@@ -85,8 +86,15 @@ struct BD_synCret : Module {
 
 		// Fill the Output buffer with new audio data
 		if (args.frame % CACHESIZE == 0) {
+			float freq_hz[4];
+
+			// Get number of active v/oct pitch channels
+			int num_voct_channels = math::clamp(inputs[PITCH_INPUT].getChannels(), 1, 4);
 			
-			const float freq_hz = 261.6256 * std::pow(2.0, inputs[PITCH_INPUT].getVoltage());
+			for(int channel = 0; channel < num_voct_channels; channel++){
+				// convert voltage to hertz frequency per channel
+				freq_hz[channel] = 261.6256 * std::pow(2.0, inputs[PITCH_INPUT].getVoltage(channel));
+			}
 			
 			float wasm_inputs[6] = {
 				inputs[I1_INPUT].isConnected() ? (float)inputs[I1_INPUT].getVoltage() : 1.0f,
@@ -97,16 +105,17 @@ struct BD_synCret : Module {
 				1.0
 			};
 
-			output_buf = ComputeAudioSamplesMonophonic(
+			output_buf = ComputeAudioSamples(
 				plugin, 
 				args.sampleTime,
+				num_voct_channels,
 				freq_hz,
 				wasm_inputs,
 				CACHESIZE
 			);
 
 			if (output_buf == nullptr) {
-            	DEBUG("ERROR: Output buffer is NULL after ComputeAudioSamplesMonophonic()");
+            	DEBUG("ERROR: Output buffer is NULL after ComputeAudioSamples()");
             	return;
         	}
 		}
@@ -202,7 +211,7 @@ struct BD_synCretWidget : ModuleWidget {
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(91.44, 46.243)), module, BD_synCret::P5_PARAM));
 		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(106.68, 46.243)), module, BD_synCret::P6_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(15.24, 77.478)), module, BD_synCret::PITCH_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(15.24, 77.478)), module, BD_synCret::PITCH_INPUT)); // TODO: POLYPHONIC?
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(30.48, 77.478)), module, BD_synCret::I1_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(45.72, 77.478)), module, BD_synCret::I2_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.96, 77.478)), module, BD_synCret::I3_INPUT));
